@@ -40,6 +40,38 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+# 최근 본 상품 업데이트
+@app.post("/products/{product_id}/view")
+async def view_product(product_id: str, request: Request, user_id: str = "user_1"):
+
+    rd = request.app.state.redis
+    key = f"user:{user_id}:recent_views"
+
+    # 1. 기존 리스트에서 동일한 ID가 있다면 제거 (중복 방지 및 끌어올리기)
+    # LREM [key] [count] [value] : count가 0이면 일치하는 모든 항목을 삭제합니다.
+    await rd.lrem(key, 0, product_id)
+
+    # 2. 최신 상품 ID를 왼쪽(맨 앞)에 추가
+    await rd.lpush(key, product_id)
+
+    # 최근 본 상품 리스트를 5개로 제한 (최신 5개만 유지)
+    await rd.ltrim(key, 0, 4)
+
+    return {"message": f"Product {product_id} added to recent views for user {user_id}"}
+
+# 최근 본 상품 조회
+@app.get("/users/{user_id}/recent-views")
+async def get_recent_views(user_id: str, request: Request):
+
+    rd = request.app.state.redis
+    key = f"user:{user_id}:recent_views"
+
+    # 리스트 전체(인덱스 0부터 -1까지) 조회
+    views = await rd.lrange(key, 0, -1)
+
+    return {"recent_views": views}
+
+
 @app.put("/users/{user_id}")
 async def update_user_profile(user_id: str, profile: UserProfileUpdate, request: Request):
 
