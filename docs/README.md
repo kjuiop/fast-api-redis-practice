@@ -4,6 +4,8 @@
 
 - [FastAPI 가이드](fastapi.md)
 - [Uvicorn 가이드](uvicorn.md)
+- [Python yield 가이드](yield.md)
+- [Python Redis 기본 명령어](python-redis.md)
 
 현재 프로젝트의 시작점은 [main.py](../main.py) 입니다.
 
