@@ -9,3 +9,10 @@ class UserProfileUpdate(BaseModel):
     name: str
     email: str
     tier: str
+
+class SendCodeRequest(BaseModel):
+    phone: str
+
+class VerifyCodeRequest(BaseModel):
+    phone: str
+    input_code: str
