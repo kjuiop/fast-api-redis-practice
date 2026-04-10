@@ -1,23 +1,12 @@
+import uuid
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi import HTTPException
+from fastapi import FastAPI, Request, Response, HTTPException
 import redis.asyncio as redis
 
 from pydantic import BaseModel
 
-# 정보 업데이트를 위한 Request Body 모델 정의 (DB 스키마와 일치)
-class UserProfileUpdate(BaseModel):
-    name: str
-    email: str
-    tier: str
-
-# 가상의 DB 데이터 (실제로는 DB에서 데이터를 가져오는 로직이 필요)
-fake_db = {
-    "user:1": {"name": "Kim", "email": "kim@example.com", "tier": "Gold"},
-    "user:2": {"name": "Lee", "email": "lee@example.com", "tier": "Silver"}
-}
 
 # lifespan 
 # FastAPI 애플리케이션의 시작과 종료 시점에 실행되는 초기화 로직을 정의하는 기능
@@ -38,6 +27,91 @@ async def lifespan(app: FastAPI):
     print("Disconnected from Redis")
 
 app = FastAPI(lifespan=lifespan)
+
+
+SESSION_EXPIRE = 3600 # 세션 만료 시간: 1시간
+
+class LoginRequest(BaseModel):
+    user_id: str
+
+@app.post("/login")
+async def login(req_data: LoginRequest, response: Response, request: Request):
+
+    rd = request.app.state.redis
+
+    # 1. 고유하고 추측 불가능한 세션 ID 생성
+    session_id = str(uuid.uuid4())
+    session_key = f"session:{session_id}"
+
+    # 2. 유저 정보를 Hashes 로 저장
+    user_info = {
+        "user_id": req_data.user_id,
+        "tier": "Premium",
+        "ip": request.client.host if request.client else "127.0.0.1"
+    }
+    await rd.hset(session_key, mapping=user_info)
+
+    # 3. 세션 만료 시간 설정
+    await rd.expire(session_key, SESSION_EXPIRE)
+
+    # 4. 클라이언트 쿠키에 세션 ID 전달 (보안을 위해 HttpOnly, Secure, SameSite 설정)
+    # 주의: 로컬 개발 환경(HTTP)에서는 secure=False로 테스트해야 할 수 있습니다.
+
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        secure=False, # HTTPS 환경에서는 True로 설정
+        samesite="lax",
+    )
+
+    return {"message": "Login successful", "session_id": session_id}
+
+
+@app.post("/logout")
+async def logout(response: Response, request: Request):
+
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    rd = request.app.state.redis
+    session_key = f"session:{session_id}"
+
+    await rd.delete(session_key)
+
+    response.delete_cookie(
+        key="session_id",
+        httponly=True,
+        secure=False,
+        samesite="lax",
+    )
+
+    return {"message": "Logout successful"}
+
+
+@app.get("/me")
+async def get_my_info(request: Request):
+
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    
+    rd = request.app.state.redis
+    session_key = f"session:{session_id}"
+
+    # 1. 레디스에서 세션 정보 조회 
+    user_info = await rd.hgetall(session_key)
+
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid session or session expired")
+    
+    # 2. 활동 중이므로 세션 시간 연장 (Sliding Window 방식)
+    await rd.expire(session_key, SESSION_EXPIRE)
+
+    return user_info
 
 
 # 최근 본 상품 업데이트
@@ -70,6 +144,21 @@ async def get_recent_views(user_id: str, request: Request):
     views = await rd.lrange(key, 0, -1)
 
     return {"recent_views": views}
+
+
+
+# 가상의 DB 데이터 (실제로는 DB에서 데이터를 가져오는 로직이 필요)
+fake_db = {
+    "user:1": {"name": "Kim", "email": "kim@example.com", "tier": "Gold"},
+    "user:2": {"name": "Lee", "email": "lee@example.com", "tier": "Silver"}
+}
+
+
+# 정보 업데이트를 위한 Request Body 모델 정의 (DB 스키마와 일치)
+class UserProfileUpdate(BaseModel):
+    name: str
+    email: str
+    tier: str
 
 
 @app.put("/users/{user_id}")
