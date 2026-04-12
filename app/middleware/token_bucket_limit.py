@@ -6,7 +6,14 @@ from fastapi.responses import JSONResponse
 
 CAPACITY = 10.0
 REFILL_RATE = 1.0
-EXCLUDED_PATHS = {"/docs", "/openapi.json", "/redoc"}
+EXCLUDED_PATHS = {
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/pub-sub/subscribe",
+    "/pub-sub/publish-notice",
+    "/pub-sub/stream-notices",
+}
 
 # 왜 Lua를 쓰는가?
 # 토큰 버킷은 "조회(HGET) -> 계산 -> 저장(HSET/EXPIRE)"가 하나의 논리적 트랜잭션입니다.

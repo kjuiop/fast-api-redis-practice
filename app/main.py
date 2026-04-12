@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app.core import lifespan
 from app.middleware.token_bucket_limit import register_token_bucket_middleware
-from app.routers import articles, auth, items, recent_views, stock, users, rank
+from app.routers import articles, auth, items, recent_views, stock, users, rank, pub_sub
 
 
 app = FastAPI(lifespan=lifespan)
@@ -16,6 +16,7 @@ app.include_router(items.router)
 app.include_router(articles.router)
 app.include_router(stock.router)
 app.include_router(rank.router)
+app.include_router(pub_sub.router)
 
 @app.get("/", tags=["root"])
 def read_root():
